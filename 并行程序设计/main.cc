@@ -11,6 +11,10 @@
 #include <omp.h>
 #include "hnswlib/hnswlib/hnswlib.h"
 #include "flat_scan.h"
+#include "kmeans_build.h"
+#include "sq.h"
+#include "pq.h"
+#include "ivfpq.h"
 // 可以自行添加需要的头文件
 
 using namespace hnswlib;
@@ -41,6 +45,7 @@ struct SearchResult
     int64_t latency; // 单位us
 };
 
+
 void build_index(float* base, size_t base_number, size_t vecdim)
 {
     const int efConstruction = 150; // 为防止索引构建时间过长，efc建议设置200以下
@@ -58,47 +63,108 @@ void build_index(float* base, size_t base_number, size_t vecdim)
 
     char path_index[1024] = "files/hnsw.index";
     appr_alg->saveIndex(path_index);
+    delete appr_alg;
 }
 
+int64_t time_diff_us(const struct timeval& start, const struct timeval& end) {
+    int64_t diff_sec = end.tv_sec - start.tv_sec;
+    int64_t diff_usec = end.tv_usec - start.tv_usec;
+    // 处理微秒借位
+    if (diff_usec < 0) {
+        diff_sec -= 1;
+        diff_usec += 1000000;
+    }
+    return diff_sec * 1000000 + diff_usec;
+}
 
 int main(int argc, char *argv[])
 {
     size_t test_number = 0, base_number = 0;
     size_t test_gt_d = 0, vecdim = 0;
 
-    std::string data_path = "/anndata/"; 
+    std::string data_path = "anndata/"; 
     auto test_query = LoadData<float>(data_path + "DEEP100K.query.fbin", test_number, vecdim);
     auto test_gt = LoadData<int>(data_path + "DEEP100K.gt.query.100k.top100.bin", test_number, test_gt_d);
     auto base = LoadData<float>(data_path + "DEEP100K.base.100k.fbin", base_number, vecdim);
+    
     // 只测试前2000条查询
     test_number = 2000;
 
-    const size_t k = 10;
+    const size_t k = 100;
 
     std::vector<SearchResult> results;
     results.resize(test_number);
 
-    // 如果你需要保存索引，可以在这里添加你需要的函数，你可以将下面的注释删除来查看pbs是否将build.index返回到你的files目录中
-    // 要保存的目录必须是files/*
-    // 每个人的目录空间有限，不需要的索引请及时删除，避免占空间太大
-    // 不建议在正式测试查询时同时构建索引，否则性能波动会较大
-    // 下面是一个构建hnsw索引的示例
     // build_index(base, base_number, vecdim);
 
+    //构建sq_compressed_base
+    // uint8_t *compressed_base = new uint8_t[base_number*vecdim];
+    // sq_compress_base(base,compressed_base, base_number, vecdim);
+    // sq_save_compressed_base(compressed_base, base_number, vecdim);
     
+    //读取sq_compressed_base
+    uint8_t *compressed_base = new uint8_t[base_number*vecdim];
+    sq_read_compressed_base(compressed_base,base_number,vecdim);
+
+    // 构建pq_kmeans
+    // pq_compress_base(base, base_number, vecdim);
+
+    //读取pq_kmeans
+    // float *centers = new float[256*vecdim];
+    // uint8_t *compressed_base = new uint8_t[base_number*4];
+    // float *centers_dis = new float[4*256*256];
+    // pq_read_kmeans(centers, compressed_base, centers_dis, base_number, vecdim);
+
+    //构建ivf
+    // int M=256;
+    // float *centers = new float[M*vecdim];
+    // uint8_t *labels = new uint8_t[base_number];
+    // kmeans(base, labels, centers, base_number, vecdim, M);
+    // build_inverted_kmeans(labels, centers, base_number, vecdim, M);
+
+    //构建ivfpq
+    // int M=256;
+    // std::vector<int>* inverted_kmeans = new std::vector<int>[M];
+    // float* ivf_centers = new float[M*vecdim];
+    // uint8_t *ivf_base = new uint8_t[base_number];
+    // read_inverted_kmeans(inverted_kmeans, ivf_centers, ivf_base, base_number, vecdim, M);
+    // ivfpq_compress_base(base, ivf_base, ivf_centers, base_number, vecdim);
+
+    // 读取ivfpq
+    // int M=256;
+    // std::vector<int>* inverted_kmeans = new std::vector<int>[M];
+    // float* ivf_centers = new float[M*vecdim];
+    // uint8_t *ivf_base = new uint8_t[base_number];
+    // read_inverted_kmeans(inverted_kmeans, ivf_centers, ivf_base, base_number, vecdim, M);
+    // float *ivfpq_centers = new float[256*vecdim];
+    // uint8_t *ivfpq_compressed_base = new uint8_t[base_number*4];
+    // ivfpq_read_kmeans(ivfpq_centers, ivfpq_compressed_base, base_number, vecdim);
+
+
     // 查询测试代码
     for(int i = 0; i < test_number; ++i) {
         const unsigned long Converter = 1000 * 1000;
-        struct timeval val;
-        int ret = gettimeofday(&val, NULL);
+        struct timespec val;
+        clock_gettime(CLOCK_MONOTONIC, &val);
 
-        // 该文件已有代码中你只能修改该函数的调用方式
-        // 可以任意修改函数名，函数参数或者改为调用成员函数，但是不能修改函数返回值。
-        auto res = flat_search(base, test_query + i*vecdim, base_number, vecdim, k);
+        //暴力搜索
+        // auto res = flat_search(base, test_query + i*vecdim, base_number, vecdim, k);
 
-        struct timeval newVal;
-        ret = gettimeofday(&newVal, NULL);
-        int64_t diff = (newVal.tv_sec * Converter + newVal.tv_usec) - (val.tv_sec * Converter + val.tv_usec);
+        //sq搜索
+        uint8_t *compressed_query = new uint8_t[vecdim];
+        sq_compress_base(test_query+i*vecdim, compressed_query, 1, vecdim);
+        auto res = sq_search(compressed_base, compressed_query, base_number, vecdim, k);
+
+        //pq搜索
+        // auto res = pq_search(compressed_base, centers, centers_dis, test_query+i*vecdim, base_number, vecdim, k);
+
+        //ivfpq搜索
+        // auto res = ivfpq_search(ivfpq_compressed_base, ivfpq_centers, ivf_centers, inverted_kmeans, test_query+i*vecdim, base_number, vecdim, k);
+
+        struct timespec newVal;
+        clock_gettime(CLOCK_MONOTONIC, &newVal);
+        int64_t diff = (newVal.tv_sec - val.tv_sec) * 1000000LL 
+             + (newVal.tv_nsec - val.tv_nsec) / 1000;
 
         std::set<uint32_t> gtset;
         for(int j = 0; j < k; ++j){
