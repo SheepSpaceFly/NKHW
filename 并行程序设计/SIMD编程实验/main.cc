@@ -15,6 +15,7 @@
 #include "sq.h"
 #include "pq.h"
 #include "ivfpq.h"
+#include "rerank.h"
 // 可以自行添加需要的头文件
 
 using namespace hnswlib;
@@ -88,9 +89,10 @@ int main(int argc, char *argv[])
     auto base = LoadData<float>(data_path + "DEEP100K.base.100k.fbin", base_number, vecdim);
     
     // 只测试前2000条查询
-    test_number = 2000;
+    test_number = 1200;
 
-    const size_t k = 100;
+    const size_t k = 10;
+    const size_t rerank_k = 100;
 
     std::vector<SearchResult> results;
     results.resize(test_number);
@@ -103,8 +105,8 @@ int main(int argc, char *argv[])
     // sq_save_compressed_base(compressed_base, base_number, vecdim);
     
     //读取sq_compressed_base
-    uint8_t *compressed_base = new uint8_t[base_number*vecdim];
-    sq_read_compressed_base(compressed_base,base_number,vecdim);
+    // uint8_t *compressed_base = new uint8_t[base_number*vecdim];
+    // sq_read_compressed_base(compressed_base,base_number,vecdim);
 
     // 构建pq_kmeans
     // pq_compress_base(base, base_number, vecdim);
@@ -131,15 +133,14 @@ int main(int argc, char *argv[])
     // ivfpq_compress_base(base, ivf_base, ivf_centers, base_number, vecdim);
 
     // 读取ivfpq
-    // int M=256;
-    // std::vector<int>* inverted_kmeans = new std::vector<int>[M];
-    // float* ivf_centers = new float[M*vecdim];
-    // uint8_t *ivf_base = new uint8_t[base_number];
-    // read_inverted_kmeans(inverted_kmeans, ivf_centers, ivf_base, base_number, vecdim, M);
-    // float *ivfpq_centers = new float[256*vecdim];
-    // uint8_t *ivfpq_compressed_base = new uint8_t[base_number*4];
-    // ivfpq_read_kmeans(ivfpq_centers, ivfpq_compressed_base, base_number, vecdim);
-
+    int M=256;
+    std::vector<int>* inverted_kmeans = new std::vector<int>[M];
+    float* ivf_centers = new float[M*vecdim];
+    uint8_t *ivf_base = new uint8_t[base_number];
+    read_inverted_kmeans(inverted_kmeans, ivf_centers, ivf_base, base_number, vecdim, M);
+    float *ivfpq_centers = new float[256*vecdim];
+    uint8_t *ivfpq_compressed_base = new uint8_t[base_number*4];
+    ivfpq_read_kmeans(ivfpq_centers, ivfpq_compressed_base, base_number, vecdim);
 
     // 查询测试代码
     for(int i = 0; i < test_number; ++i) {
@@ -151,15 +152,19 @@ int main(int argc, char *argv[])
         // auto res = flat_search(base, test_query + i*vecdim, base_number, vecdim, k);
 
         //sq搜索
-        uint8_t *compressed_query = new uint8_t[vecdim];
-        sq_compress_base(test_query+i*vecdim, compressed_query, 1, vecdim);
-        auto res = sq_search(compressed_base, compressed_query, base_number, vecdim, k);
+        // uint8_t *compressed_query = new uint8_t[vecdim];
+        // sq_compress_base(test_query+i*vecdim, compressed_query, 1, vecdim);
+        // auto raw_res = sq_search(compressed_base, compressed_query, base_number, vecdim, k);
 
         //pq搜索
-        // auto res = pq_search(compressed_base, centers, centers_dis, test_query+i*vecdim, base_number, vecdim, k);
+        // auto raw_res = pq_search(compressed_base, centers, centers_dis, test_query+i*vecdim, base_number, vecdim, rerank_k);
 
         //ivfpq搜索
-        // auto res = ivfpq_search(ivfpq_compressed_base, ivfpq_centers, ivf_centers, inverted_kmeans, test_query+i*vecdim, base_number, vecdim, k);
+        int m=8;
+        auto raw_res = ivfpq_search(ivfpq_compressed_base, ivfpq_centers, ivf_centers, inverted_kmeans, test_query+i*vecdim, base_number, vecdim, rerank_k, m);
+
+        auto res = rerank(base, raw_res, test_query+i*vecdim, vecdim, k);
+        
 
         struct timespec newVal;
         clock_gettime(CLOCK_MONOTONIC, &newVal);
@@ -194,5 +199,6 @@ int main(int argc, char *argv[])
     // 浮点误差可能导致一些精确算法平均recall不是1
     std::cout << "average recall: "<<avg_recall / test_number<<"\n";
     std::cout << "average latency (us): "<<avg_latency / test_number<<"\n";
+
     return 0;
 }

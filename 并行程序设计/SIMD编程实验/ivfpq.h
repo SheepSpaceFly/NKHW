@@ -126,10 +126,9 @@ float get_query_dis(float *query1, float *query2, int vecdim){
     return sum;
 }
 
-std::priority_queue<std::pair<float, uint32_t> > ivfpq_search(uint8_t* compressed_base, float *centers, float *ivf_centers,std::vector<int> *inverted_kmeans, float* query, size_t base_number, size_t vecdim, size_t k_top) {
+std::priority_queue<std::pair<float, uint32_t> > ivfpq_search(uint8_t* compressed_base, float *centers, float *ivf_centers,std::vector<int> *inverted_kmeans, float* query, size_t base_number, size_t vecdim, size_t k_top, int m) {
     const int K=256;
 
-    int m=16;
     int *query_ivf_labels = new int[m];
 
     std::priority_queue<std::pair<float, uint32_t> > ivf_q;
