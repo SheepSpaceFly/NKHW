@@ -1,0 +1,19 @@
+8进程    串行
+
+m=8		rerank=600
+average recall: 0.904084
+average latency (us): 358.758
+
+m=16	rerank=320
+average recall: 0.904752
+average latency (us): 277.315
+
+
+m=24	rerank=300
+average recall: 0.903835
+average latency (us): 304.386
+
+
+m=32	rerank=300
+average recall: 0.905335
+average latency (us): 334.473
